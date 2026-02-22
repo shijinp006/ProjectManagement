@@ -1,9 +1,11 @@
 // controllers/departmentController.js
-import Department from "../models/Department.js";
+import Department from "../../model/DepartmentSchema.js";
 
 // Helper: check if user is admin
 const requireAdmin = (req, res) => {
-  const { role } = req.user;
+ 
+  
+  const { role } = req.user.id.id;
   if (role !== "admin") {
     res.status(403).json({ message: "Access denied. Admins only." });
     return false;
@@ -17,6 +19,8 @@ export const createDepartment = async (req, res) => {
 
   const { name, code, description } = req.body;
 
+
+
   try {
     if (!name || name.trim().length < 2) {
       return res.status(400).json({ message: "Department name must be at least 2 characters" });
@@ -25,8 +29,17 @@ export const createDepartment = async (req, res) => {
       return res.status(400).json({ message: "Department code must be at least 2 characters" });
     }
 
-    const existingDept = await Department.findOne({ code: code.toUpperCase() });
+    const existingDept = await Department.findOne({
+      $or: [
+        { code: code.trim().toUpperCase() },
+        { name: { $regex: `^${name.trim()}$`, $options: "i" } }
+      ]
+    });
+
     if (existingDept) {
+
+
+
       return res.status(400).json({ message: "Department code already exists" });
     }
 
@@ -49,6 +62,8 @@ export const createDepartment = async (req, res) => {
 
 // Get all departments
 export const getDepartments = async (req, res) => {
+
+
   if (!requireAdmin(req, res)) return;
 
   try {
@@ -63,6 +78,8 @@ export const getDepartments = async (req, res) => {
 // Get a single department by ID
 export const getDepartmentById = async (req, res) => {
   if (!requireAdmin(req, res)) return;
+
+
 
   const { id } = req.params;
   try {
@@ -123,19 +140,25 @@ export const updateDepartment = async (req, res) => {
 
 // Delete a department by ID
 export const deleteDepartment = async (req, res) => {
+  // Check if admin
   if (!requireAdmin(req, res)) return;
 
   const { id } = req.params;
+  // console.log("Deleting department id:", id);
 
   try {
-    const department = await Department.findById(id);
+    // Delete department in one step
+    const department = await Department.findByIdAndDelete(id);
+
     if (!department) {
       return res.status(404).json({ message: "Department not found" });
     }
 
-    await department.remove();
-    res.status(200).json({ message: "Department deleted successfully" });
+    // Optional: clear references in students/guides if needed
+    // await Student.updateMany({ department: department.name }, { department: "" });
+    // await Guide.updateMany({ department: department.name }, { department: "" });
 
+    res.status(200).json({ message: "Department deleted successfully" });
   } catch (error) {
     console.error("Delete Department error:", error);
     res.status(500).json({ message: "Server error. Please try again." });

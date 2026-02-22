@@ -1,10 +1,12 @@
 // controllers/adminController.js
 import Admin from "../../model/AdminSchema.js";
+import Guide from "../../model/GuidSchema.js";
+import Student from "../../model/StudentSchema.js";
 import jwt from "jsonwebtoken";
 
 // Generate JWT
-const generateToken = (adminId ,role) => {
-  return jwt.sign({ id: adminId , role:role }, process.env.JWT_SECRET, {
+const generateToken = (adminId, role) => {
+  return jwt.sign({ id: adminId, role: role }, process.env.JWT_SECRET, {
     expiresIn: "7d",
   });
 };
@@ -65,46 +67,84 @@ export const createAdmin = async (req, res) => {
 
 // Login Admin
 export const loginAdmin = async (req, res) => {
-  const { email } = req.body;
-  console.log(req.body,"body");
-  
+  const { email, username } = req.body;
+
+
 
   try {
-    // Validation: Check if email is provided
-    if (!email) {
-      return res.status(400).json({ message: "Email is required" });
+    if (!email && !username) {
+      return res.status(400).json({ message: "Email or Username required" });
     }
 
-    // Validation: Check email format
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-      return res.status(400).json({ message: "Invalid email format" });
+    let user = null;
+    let role = "";
+    let department = undefined;
+
+    // 1️⃣ Check Admin first
+    user = await Admin.findOne({
+      $or: [{ email }]
+    });
+
+
+
+    if (user) {
+      role = "admin";
+    } else {
+      // 2️⃣ Check Guide
+      user = await Guide.findOne({
+        $or: [{ email }]
+      });
+
+
+      if (user) {
+        role = "Guide";
+      } else {
+        // 3️⃣ Check Student
+        user = await Student.findOne({
+          $or: [{ email }]
+        });
+
+        if (user) {
+          role = "Student";
+
+
+        }
+      }
     }
 
-    // Find admin by email
-    const admin = await Admin.findOne({ email });
-    if (!admin) {
-      return res.status(401).json({ message: "Admin not found with this email" });
+    // ❌ If not found anywhere
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        message: "User not found"
+      });
     }
 
-    console.log(admin.role,"role");
-    
+    // ✅ Generate token
+    const token = generateToken({
+      id: user._id,
+      role: user.role,
+      department: user.department
+    });
 
-    // Generate JWT token
-    const token = generateToken(admin._id ,admin.role);
-
-    // Send token in HTTP-only cookie
+    // ✅ Send cookie
     res.cookie("token", token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "strict",
-      maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+      maxAge: 7 * 24 * 60 * 60 * 1000
     });
 
-    // Respond with admin info
     res.status(200).json({
+      success: true,
       message: "Login successful",
-      admin: { id: admin._id, userName: admin.userName, email: admin.email , role:admin.role }
+      user: {
+        id: user._id,
+        name: user.name || user.userName,
+        email: user.email,
+        role,
+        department: user.department
+      }
     });
 
   } catch (error) {
